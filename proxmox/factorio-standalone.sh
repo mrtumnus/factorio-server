@@ -364,11 +364,30 @@ install_factorio() {
 
   msg_info "Fetching latest Factorio version"
   FACTORIO_VERSION=$(pct exec "$CT_ID" -- sh -c "curl -fsSL 'https://factorio.com/api/latest-releases' | jq -r '.stable.headless // \"stable\"'")
+  if [[ -z "$FACTORIO_VERSION" || "$FACTORIO_VERSION" == "null" ]]; then
+    msg_error "Could not fetch Factorio version"
+    exit 1
+  fi
   msg_ok "Latest version: $FACTORIO_VERSION"
 
   msg_info "Downloading Factorio Headless Server"
-  pct exec "$CT_ID" -- curl -fsSL "https://factorio.com/get-download/${FACTORIO_VERSION}/headless/linux64" -o /tmp/factorio.tar.xz
-  msg_ok "Downloaded Factorio"
+  DOWNLOAD_URL="https://factorio.com/get-download/${FACTORIO_VERSION}/headless/linux64"
+  if ! pct exec "$CT_ID" -- curl -L --fail --progress-bar "$DOWNLOAD_URL" -o /tmp/factorio.tar.xz; then
+    msg_error "Failed to download Factorio from: $DOWNLOAD_URL"
+    exit 1
+  fi
+  # Verify download
+  if ! pct exec "$CT_ID" -- test -f /tmp/factorio.tar.xz; then
+    msg_error "Download file not found after curl"
+    exit 1
+  fi
+  FILESIZE=$(pct exec "$CT_ID" -- stat -c%s /tmp/factorio.tar.xz 2>/dev/null || echo "0")
+  if [[ "$FILESIZE" -lt 1000000 ]]; then
+    msg_error "Downloaded file too small (${FILESIZE} bytes) - download may have failed"
+    pct exec "$CT_ID" -- cat /tmp/factorio.tar.xz 2>/dev/null || true
+    exit 1
+  fi
+  msg_ok "Downloaded Factorio (${FILESIZE} bytes)"
 
   msg_info "Installing Factorio"
   if ! pct exec "$CT_ID" -- tar -xJf /tmp/factorio.tar.xz -C /opt; then
