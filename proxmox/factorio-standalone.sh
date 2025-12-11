@@ -250,8 +250,11 @@ configure_container() {
   PUBLIC_VISIBLE=${PUBLIC_VISIBLE:-n}
   if [[ ${PUBLIC_VISIBLE,,} == "y" ]]; then
     VISIBILITY_PUBLIC="true"
+    REQUIRE_USER_VERIFICATION="true"
+    msg_info "User verification enabled (required for public servers)"
   else
     VISIBILITY_PUBLIC="false"
+    REQUIRE_USER_VERIFICATION="false"
   fi
 
   # Factorio Account (required for public servers)
@@ -484,7 +487,7 @@ install_factorio() {
     "password": "__FACTORIO_PASSWORD__",
     "token": "__FACTORIO_TOKEN__",
     "game_password": "__GAME_PASSWORD__",
-    "require_user_verification": false,
+    "require_user_verification": __REQUIRE_USER_VERIFICATION__,
     "max_upload_in_kilobytes_per_second": 0,
     "max_upload_slots": 5,
     "minimum_latency_in_ticks": 0,
@@ -575,6 +578,7 @@ SYSTEMD
   pct exec "$CT_ID" -- sed -i "s/__SERVER_DESCRIPTION__/$(escape_sed "$SERVER_DESCRIPTION")/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__MAX_PLAYERS__/${MAX_PLAYERS}/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__VISIBILITY_PUBLIC__/${VISIBILITY_PUBLIC}/" /opt/factorio/config/server-settings.json
+  pct exec "$CT_ID" -- sed -i "s/__REQUIRE_USER_VERIFICATION__/${REQUIRE_USER_VERIFICATION}/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__FACTORIO_USERNAME__/$(escape_sed "${FACTORIO_USERNAME:-}")/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__FACTORIO_PASSWORD__/$(escape_sed "${FACTORIO_PASSWORD:-}")/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__FACTORIO_TOKEN__/$(escape_sed "${FACTORIO_TOKEN:-}")/" /opt/factorio/config/server-settings.json
