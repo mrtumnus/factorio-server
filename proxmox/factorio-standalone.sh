@@ -353,7 +353,7 @@ install_factorio() {
   msg_ok "User created"
 
   msg_info "Fetching latest Factorio version"
-  FACTORIO_VERSION=$(pct exec "$CT_ID" -- curl -fsSL "https://factorio.com/api/latest-releases" | jq -r '.stable.headless // "stable"')
+  FACTORIO_VERSION=$(pct exec "$CT_ID" -- bash -c "curl -fsSL 'https://factorio.com/api/latest-releases' | jq -r '.stable.headless // \"stable\"'")
   msg_ok "Latest version: $FACTORIO_VERSION"
 
   msg_info "Downloading Factorio Headless Server"
