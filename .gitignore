@@ -1,0 +1,17 @@
+# Environment files mit Passwörtern
+.env
+
+# Temporäre Dateien
+*.tmp
+*.log
+*.bak
+
+# OS-spezifisch
+.DS_Store
+Thumbs.db
+
+# IDE
+.idea/
+.vscode/
+*.swp
+*.swo
