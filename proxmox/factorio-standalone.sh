@@ -626,6 +626,13 @@ SYSTEMD
   pct exec "$CT_ID" -- sed -i "s/__FACTORIO_TOKEN__/$(escape_sed "${FACTORIO_TOKEN:-}")/" /opt/factorio/config/server-settings.json
   pct exec "$CT_ID" -- sed -i "s/__GAME_PASSWORD__/$(escape_sed "${GAME_PASSWORD:-}")/" /opt/factorio/config/server-settings.json
   
+  # Create admin list if username is provided
+  if [[ -n "$FACTORIO_USERNAME" ]]; then
+    echo "[\"${FACTORIO_USERNAME}\"]" | pct exec "$CT_ID" -- tee /opt/factorio/config/server-adminlist.json >/dev/null
+    pct exec "$CT_ID" -- chown factorio:factorio /opt/factorio/config/server-adminlist.json
+    msg_ok "Admin list created (${FACTORIO_USERNAME})"
+  fi
+  
   msg_ok "Server configuration applied"
 
   msg_info "Creating dynamic MOTD"

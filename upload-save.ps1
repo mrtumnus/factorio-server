@@ -2,7 +2,8 @@
 .SYNOPSIS
     Upload a Factorio save file to the server
 .DESCRIPTION
-    Uploads a local save file to the Factorio server via SCP and optionally restarts the server
+    Uploads a local save file to the Factorio server via SCP.
+    Automatically stops the server before upload and restarts after.
 .EXAMPLE
     .\upload-save.ps1
     .\upload-save.ps1 -SaveFile "C:\saves\mysave.zip" -ServerIP "192.168.1.100"
@@ -11,8 +12,7 @@
 param(
     [string]$SaveFile,
     [string]$ServerIP,
-    [string]$User = "root",
-    [switch]$NoRestart
+    [string]$User = "root"
 )
 
 $ErrorActionPreference = "Stop"
@@ -69,6 +69,9 @@ if ($rename -ne "n" -and $rename -ne "N") {
 }
 
 Write-Host ""
+Write-Host "  Stopping Factorio server..." -ForegroundColor Cyan
+ssh "${User}@${ServerIP}" "systemctl stop factorio"
+
 Write-Host "  Uploading..." -ForegroundColor Cyan
 
 # Upload via SCP
@@ -85,28 +88,22 @@ try {
 }
 catch {
     Write-Host "  ERROR: Upload failed - $_" -ForegroundColor Red
+    # Try to restart server even on failure
+    ssh "${User}@${ServerIP}" "systemctl start factorio" 2>$null
     exit 1
 }
 
-# Fix permissions
+# Fix permissions and start server
 Write-Host "  Setting permissions..." -ForegroundColor Cyan
 ssh "${User}@${ServerIP}" "chown factorio:factorio /opt/factorio/saves/${TargetName}"
 
-# Restart server
-if (-not $NoRestart) {
-    Write-Host ""
-    $restart = Read-Host "  Restart server now? [Y/n]"
-    if ($restart -ne "n" -and $restart -ne "N") {
-        Write-Host "  Restarting Factorio server..." -ForegroundColor Cyan
-        ssh "${User}@${ServerIP}" "systemctl restart factorio"
-        Write-Host "  Server restarted!" -ForegroundColor Green
-        
-        # Show status
-        Write-Host ""
-        Write-Host "  Server Status:" -ForegroundColor White
-        ssh "${User}@${ServerIP}" "systemctl status factorio --no-pager | head -5"
-    }
-}
+Write-Host "  Starting Factorio server..." -ForegroundColor Cyan
+ssh "${User}@${ServerIP}" "systemctl start factorio"
+
+# Show status
+Write-Host ""
+Write-Host "  Server Status:" -ForegroundColor White
+ssh "${User}@${ServerIP}" "systemctl status factorio --no-pager | head -5"
 
 Write-Host ""
 Write-Host "  Done! Connect to: ${ServerIP}:34197" -ForegroundColor Green
