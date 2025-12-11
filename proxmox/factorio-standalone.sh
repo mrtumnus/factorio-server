@@ -474,11 +474,20 @@ SYSTEMD
   # Samba mount configuration
   if [[ ${CONFIGURE_SMB,,} == "y" ]]; then
     msg_info "Configuring Samba backup mount"
-    printf "username=%s\npassword=%s\n" "$SMB_USER" "$SMB_PASS" | pct exec "$CT_ID" -- tee /root/.smbcredentials >/dev/null
+    # Create credentials file
+    {
+      echo "username=${SMB_USER}"
+      echo "password=${SMB_PASS}"
+    } | pct exec "$CT_ID" -- tee /root/.smbcredentials >/dev/null
     pct exec "$CT_ID" -- chmod 600 /root/.smbcredentials
-    printf "//%s/%s /backup cifs credentials=/root/.smbcredentials,uid=factorio,gid=factorio,file_mode=0660,dir_mode=0770 0 0\n" "$SMB_SERVER" "$SMB_SHARE" | pct exec "$CT_ID" -- tee -a /etc/fstab >/dev/null
-    pct exec "$CT_ID" -- mount -a 2>/dev/null || msg_warn "Could not mount Samba share - check credentials"
-    msg_ok "Samba backup configured"
+    # Add fstab entry
+    echo "//${SMB_SERVER}/${SMB_SHARE} /backup cifs credentials=/root/.smbcredentials,uid=factorio,gid=factorio,file_mode=0660,dir_mode=0770,nofail 0 0" | pct exec "$CT_ID" -- tee -a /etc/fstab >/dev/null
+    # Try to mount (don't fail if it doesn't work)
+    if pct exec "$CT_ID" -- mount -a 2>/dev/null; then
+      msg_ok "Samba backup configured and mounted"
+    else
+      msg_warn "Samba backup configured but mount failed - check credentials/network"
+    fi
   fi
 
   msg_info "Creating dynamic MOTD"
