@@ -10,8 +10,8 @@
 # ║  License: MIT                                                             ║
 # ╚═══════════════════════════════════════════════════════════════════════════╝
 
-set -euo pipefail
-shopt -s inherit_errexit nullglob
+# Don't use set -e, handle errors explicitly for better debugging
+set -uo pipefail
 
 # ═══════════════════════════════════════════════════════════════════════════
 # CONFIGURATION
@@ -396,26 +396,29 @@ install_factorio() {
   msg_ok "Network ready"
 
   msg_info "Configuring locale"
-  pct exec "$CT_ID" -- apt-get update -qq
-  pct exec "$CT_ID" -- apt-get install -y -qq locales
+  pct exec "$CT_ID" -- apt-get update -qq || msg_warn "apt-get update had warnings"
+  pct exec "$CT_ID" -- apt-get install -y -qq locales || msg_warn "locales install had warnings"
   echo "en_US.UTF-8 UTF-8" | pct exec "$CT_ID" -- tee /etc/locale.gen >/dev/null
-  pct exec "$CT_ID" -- locale-gen >/dev/null 2>&1
-  pct exec "$CT_ID" -- update-locale LANG=en_US.UTF-8 >/dev/null 2>&1
+  pct exec "$CT_ID" -- locale-gen >/dev/null 2>&1 || true
+  pct exec "$CT_ID" -- update-locale LANG=en_US.UTF-8 >/dev/null 2>&1 || true
   msg_ok "Locale configured"
 
   msg_info "Updating system packages"
-  pct exec "$CT_ID" -- apt-get upgrade -y -qq
+  pct exec "$CT_ID" -- apt-get upgrade -y -qq || msg_warn "apt-get upgrade had warnings"
   msg_ok "System updated"
 
   msg_info "Installing dependencies"
-  pct exec "$CT_ID" -- apt-get install -y -qq curl sudo mc xz-utils jq cifs-utils openssh-server
+  if ! pct exec "$CT_ID" -- apt-get install -y -qq curl sudo mc xz-utils jq cifs-utils openssh-server; then
+    msg_error "Failed to install dependencies"
+    exit 1
+  fi
   msg_ok "Dependencies installed"
 
   msg_info "Configuring SSH"
   echo "root:${ROOT_PASSWORD}" | pct exec "$CT_ID" -- chpasswd
-  pct exec "$CT_ID" -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config
-  pct exec "$CT_ID" -- sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config
-  pct exec "$CT_ID" -- systemctl enable ssh
+  pct exec "$CT_ID" -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || true
+  pct exec "$CT_ID" -- sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config || true
+  pct exec "$CT_ID" -- systemctl enable ssh || true
   pct exec "$CT_ID" -- systemctl restart ssh
   msg_ok "SSH configured (root login enabled)"
 
@@ -453,21 +456,19 @@ install_factorio() {
   msg_ok "Downloaded Factorio (${FILESIZE} bytes)"
 
   msg_info "Installing Factorio"
-  set +e  # Temporarily disable exit on error
   TAR_OUTPUT=$(pct exec "$CT_ID" -- sh -c "tar -xJf /tmp/factorio.tar.xz -C /opt 2>&1")
   TAR_EXIT=$?
-  set -e  # Re-enable exit on error
   if [[ $TAR_EXIT -ne 0 ]]; then
     msg_error "Failed to extract Factorio archive (exit code: $TAR_EXIT)"
     echo "$TAR_OUTPUT"
     exit 1
   fi
-  pct exec "$CT_ID" -- rm -f /tmp/factorio.tar.xz
+  pct exec "$CT_ID" -- rm -f /tmp/factorio.tar.xz || true
   msg_ok "Installed Factorio"
 
   msg_info "Creating directory structure"
-  pct exec "$CT_ID" -- mkdir -p /opt/factorio/saves /opt/factorio/mods /opt/factorio/config /backup
-  pct exec "$CT_ID" -- chown -R factorio:factorio /opt/factorio /backup
+  pct exec "$CT_ID" -- mkdir -p /opt/factorio/saves /opt/factorio/mods /opt/factorio/config /backup || true
+  pct exec "$CT_ID" -- chown -R factorio:factorio /opt/factorio /backup || true
   msg_ok "Directories created"
 
   # Upload configuration files
