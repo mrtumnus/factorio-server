@@ -370,7 +370,7 @@ install_factorio() {
 
   # Upload configuration files
   msg_info "Creating server configuration"
-  pct exec "$CT_ID" -- bash -c 'cat > /opt/factorio/config/server-settings.json << '\''SERVERCONF'\''
+  cat <<'SERVERCONF' | pct exec "$CT_ID" -- tee /opt/factorio/config/server-settings.json >/dev/null
 {
     "name": "Factorio Server",
     "description": "A Factorio server running on Proxmox LXC",
@@ -400,11 +400,11 @@ install_factorio() {
     "maximum_segment_size": 100,
     "maximum_segment_size_peer_count": 10
 }
-SERVERCONF'
+SERVERCONF
   msg_ok "Server configuration created"
 
   msg_info "Creating startup script"
-  pct exec "$CT_ID" -- bash -c 'cat > /opt/factorio/start-server.sh << '\''STARTSCRIPT'\''
+  cat <<'STARTSCRIPT' | pct exec "$CT_ID" -- tee /opt/factorio/start-server.sh >/dev/null
 #!/bin/bash
 set -e
 FACTORIO_DIR="/opt/factorio"
@@ -424,13 +424,13 @@ fi
 ARGS=("--start-server" "${SAVE_FILE}" "--server-settings" "${CONFIG_DIR}/server-settings.json")
 [ -f "${CONFIG_DIR}/server-adminlist.json" ] && ARGS+=("--server-adminlist" "${CONFIG_DIR}/server-adminlist.json")
 exec ${BINARY} "${ARGS[@]}"
-STARTSCRIPT'
+STARTSCRIPT
   pct exec "$CT_ID" -- chmod +x /opt/factorio/start-server.sh
   pct exec "$CT_ID" -- chown factorio:factorio /opt/factorio/start-server.sh
   msg_ok "Startup script created"
 
   msg_info "Creating systemd service"
-  pct exec "$CT_ID" -- bash -c 'cat > /etc/systemd/system/factorio.service << '\''SYSTEMD'\''
+  cat <<'SYSTEMD' | pct exec "$CT_ID" -- tee /etc/systemd/system/factorio.service >/dev/null
 [Unit]
 Description=Factorio Dedicated Server
 After=network.target
@@ -454,7 +454,7 @@ PrivateTmp=true
 
 [Install]
 WantedBy=multi-user.target
-SYSTEMD'
+SYSTEMD
   pct exec "$CT_ID" -- systemctl daemon-reload
   pct exec "$CT_ID" -- systemctl enable factorio
   msg_ok "Systemd service created"
@@ -469,7 +469,7 @@ SYSTEMD'
   fi
 
   msg_info "Creating dynamic MOTD"
-  pct exec "$CT_ID" -- bash -c 'cat > /etc/update-motd.d/10-factorio << '\''EOF'\''
+  cat <<'MOTDEOF' | pct exec "$CT_ID" -- tee /etc/update-motd.d/10-factorio >/dev/null
 #!/bin/bash
 
 # Colors
@@ -525,7 +525,7 @@ echo -e "  ${BOLD}Commands:${NC}"
 echo -e "    systemctl ${GREEN}start${NC}|${RED}stop${NC}|${YELLOW}restart${NC}|status factorio"
 echo -e "    journalctl -u factorio -f"
 echo ""
-EOF'
+MOTDEOF
   pct exec "$CT_ID" -- chmod +x /etc/update-motd.d/10-factorio
   pct exec "$CT_ID" -- bash -c "rm -f /etc/motd /etc/update-motd.d/10-uname 2>/dev/null || true"
   msg_ok "Dynamic MOTD created"
