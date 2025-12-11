@@ -224,6 +224,15 @@ configure_container() {
   done
   msg_ok "SSH Passwort gesetzt"
 
+  # SSH Public Key (optional)
+  echo ""
+  echo -e "${DIM}Optional: SSH Public Key für passwortlosen Zugriff${CL}"
+  echo -e "${DIM}(Windows: type %USERPROFILE%\\.ssh\\id_ed25519.pub | clip)${CL}"
+  read -rp "SSH Public Key (Enter to skip): " SSH_PUBLIC_KEY
+  if [[ -n "$SSH_PUBLIC_KEY" ]]; then
+    msg_ok "SSH Public Key wird eingerichtet"
+  fi
+
   # ═══════════════════════════════════════════════════════════════════════════
   # FACTORIO SERVER CONFIGURATION
   # ═══════════════════════════════════════════════════════════════════════════
@@ -422,6 +431,14 @@ install_factorio() {
   pct exec "$CT_ID" -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || true
   pct exec "$CT_ID" -- sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config || true
   pct exec "$CT_ID" -- systemctl enable ssh || true
+  # Setup SSH public key if provided
+  if [[ -n "$SSH_PUBLIC_KEY" ]]; then
+    pct exec "$CT_ID" -- mkdir -p /root/.ssh
+    pct exec "$CT_ID" -- chmod 700 /root/.ssh
+    echo "$SSH_PUBLIC_KEY" | pct exec "$CT_ID" -- tee /root/.ssh/authorized_keys >/dev/null
+    pct exec "$CT_ID" -- chmod 600 /root/.ssh/authorized_keys
+    msg_ok "SSH Public Key configured"
+  fi
   pct exec "$CT_ID" -- systemctl restart ssh
   msg_ok "SSH configured (root login enabled)"
 
