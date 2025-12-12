@@ -570,7 +570,7 @@ if [ ! -f "${SAVE_FILE}" ]; then
 fi
 
 ARGS=("--start-server" "${SAVE_FILE}" "--server-settings" "${CONFIG_DIR}/server-settings.json")
-[ -f "${CONFIG_DIR}/server-adminlist.json" ] && ARGS+=("--server-adminlist" "${CONFIG_DIR}/server-adminlist.json")
+[ -f "${FACTORIO_DIR}/server-adminlist.json" ] && ARGS+=("--server-adminlist" "${FACTORIO_DIR}/server-adminlist.json")
 exec ${BINARY} "${ARGS[@]}"
 STARTSCRIPT
   pct exec "$CT_ID" -- chmod +x /opt/factorio/start-server.sh
@@ -628,8 +628,8 @@ SYSTEMD
   
   # Create admin list if username is provided
   if [[ -n "$FACTORIO_USERNAME" ]]; then
-    echo "[\"${FACTORIO_USERNAME}\"]" | pct exec "$CT_ID" -- tee /opt/factorio/config/server-adminlist.json >/dev/null
-    pct exec "$CT_ID" -- chown factorio:factorio /opt/factorio/config/server-adminlist.json
+    echo "[\"${FACTORIO_USERNAME}\"]" | pct exec "$CT_ID" -- tee /opt/factorio/server-adminlist.json >/dev/null
+    pct exec "$CT_ID" -- chown factorio:factorio /opt/factorio/server-adminlist.json
     msg_ok "Admin list created (${FACTORIO_USERNAME})"
   fi
   
