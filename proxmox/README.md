@@ -19,7 +19,6 @@ Das Script führt dich durch einen interaktiven Wizard:
 - Öffentlich/Privat (mit Factorio.com Credentials)
 - Optionales Spiel-Passwort
 - Optional: SSH Public Key für passwortlosen Zugriff
-- Optional: Backup-Mount auf Host-Pfad (mit stündlichen Backups)
 
 ## 📁 Projektstruktur
 
@@ -61,13 +60,10 @@ systemctl restart factorio
 
 | Pfad | Beschreibung |
 |------|--------------|
-| `/opt/factorio/saves/` | Savegames |
+| `/opt/factorio/saves/` | Savegames (inkl. Autosaves) |
 | `/opt/factorio/mods/` | Mods |
 | `/opt/factorio/config/server-settings.json` | Server-Konfiguration |
 | `/opt/factorio/server-adminlist.json` | Admin-Liste |
-| `/opt/factorio/backup.sh` | Backup-Script |
-| `/backup/` | Backup-Verzeichnis (Bind-Mount) |
-| `/var/log/factorio-backup.log` | Backup-Log |
 
 ## 🔄 Updates
 
@@ -110,42 +106,26 @@ ufw allow 34197/udp
 
 ## 💾 Backup
 
-Wenn bei der Installation ein Backup-Pfad konfiguriert wurde, werden automatisch stündliche Backups erstellt.
+### Factorio Autosave
 
-### Backup-Strategie
+Factorio erstellt automatisch Autosaves (default alle 5 Minuten) in `/opt/factorio/saves/`.
 
-- **Stündliche Backups**: Die letzten 24 werden behalten
-- **Tägliche Backups**: Um Mitternacht, die letzten 7 werden behalten
-- **Namensformat**: `{hostname}-{timestamp}.zip` bzw. `{hostname}-daily-{date}.zip`
+### Proxmox Container Backup (empfohlen)
 
-### Manuelles Backup
+Nutze das integrierte Proxmox Backup für den gesamten Container:
 
+**Über die GUI:**
+1. Datacenter → Backup → Add
+2. Storage, Schedule und Container auswählen
+3. Retention Policy konfigurieren
+
+**Per Kommandozeile:**
 ```bash
-/opt/factorio/backup.sh
-```
+# Einmaliges Backup
+vzdump <CTID> --storage <backup-storage> --mode snapshot
 
-### Backup-Log prüfen
-
-```bash
-cat /var/log/factorio-backup.log
-```
-
-### Nachträglich Backup einrichten
-
-Auf dem Proxmox Host:
-
-```bash
-# Bind-Mount hinzufügen (CTID und Pfad anpassen)
-pct set <CTID> -mp0 /mnt/pve/factorio,mp=/backup
-```
-
-Im Container:
-
-```bash
-# Backup-Script erstellen (siehe factorio-standalone.sh)
-# Cronjob einrichten
-echo "0 * * * * factorio /opt/factorio/backup.sh >> /var/log/factorio-backup.log 2>&1" > /etc/cron.d/factorio-backup
-chmod 644 /etc/cron.d/factorio-backup
+# Geplantes Backup (cron)
+echo "0 3 * * * root vzdump <CTID> --storage local --mode snapshot --prune-backups keep-last=7" > /etc/cron.d/factorio-backup
 ```
 
 ## 🐛 Troubleshooting
