@@ -15,7 +15,11 @@ Das Script führt dich durch einen interaktiven Wizard:
 - CPU, RAM, Disk
 - Netzwerk (DHCP oder statische IP)
 - Storage-Auswahl
-- Optional: Samba Backup-Mount
+- Server-Name, Beschreibung
+- Öffentlich/Privat (mit Factorio.com Credentials)
+- Optionales Spiel-Passwort
+- Optional: SSH Public Key für passwortlosen Zugriff
+- Optional: Backup-Mount auf Host-Pfad (mit stündlichen Backups)
 
 ## 📁 Projektstruktur
 
@@ -60,8 +64,10 @@ systemctl restart factorio
 | `/opt/factorio/saves/` | Savegames |
 | `/opt/factorio/mods/` | Mods |
 | `/opt/factorio/config/server-settings.json` | Server-Konfiguration |
-| `/opt/factorio/config/server-adminlist.json` | Admin-Liste |
-| `/backup/` | Backup-Verzeichnis (Samba-Mount) |
+| `/opt/factorio/server-adminlist.json` | Admin-Liste |
+| `/opt/factorio/backup.sh` | Backup-Script |
+| `/backup/` | Backup-Verzeichnis (Bind-Mount) |
+| `/var/log/factorio-backup.log` | Backup-Log |
 
 ## 🔄 Updates
 
@@ -104,33 +110,42 @@ ufw allow 34197/udp
 
 ## 💾 Backup
 
+Wenn bei der Installation ein Backup-Pfad konfiguriert wurde, werden automatisch stündliche Backups erstellt.
+
+### Backup-Strategie
+
+- **Stündliche Backups**: Die letzten 24 werden behalten
+- **Tägliche Backups**: Um Mitternacht, die letzten 7 werden behalten
+- **Namensformat**: `{hostname}-{timestamp}.zip` bzw. `{hostname}-daily-{date}.zip`
+
 ### Manuelles Backup
 
 ```bash
 /opt/factorio/backup.sh
 ```
 
-### Automatisches Backup (täglich 4:00)
-
-Wird automatisch per Cron eingerichtet.
-
-### Backup auf Samba-Share
-
-Falls bei der Installation konfiguriert, werden Backups automatisch auf den Samba-Share geschrieben.
-
-Nachträglich konfigurieren:
+### Backup-Log prüfen
 
 ```bash
-# Credentials speichern
-echo "username=backup_user" > /root/.smbcredentials
-echo "password=backup_pass" >> /root/.smbcredentials
-chmod 600 /root/.smbcredentials
+cat /var/log/factorio-backup.log
+```
 
-# fstab Eintrag
-echo "//192.168.1.100/backup/factorio /backup cifs credentials=/root/.smbcredentials,uid=factorio,gid=factorio 0 0" >> /etc/fstab
+### Nachträglich Backup einrichten
 
-# Mounten
-mount -a
+Auf dem Proxmox Host:
+
+```bash
+# Bind-Mount hinzufügen (CTID und Pfad anpassen)
+pct set <CTID> -mp0 /mnt/pve/factorio,mp=/backup
+```
+
+Im Container:
+
+```bash
+# Backup-Script erstellen (siehe factorio-standalone.sh)
+# Cronjob einrichten
+echo "0 * * * * factorio /opt/factorio/backup.sh >> /var/log/factorio-backup.log 2>&1" > /etc/cron.d/factorio-backup
+chmod 644 /etc/cron.d/factorio-backup
 ```
 
 ## 🐛 Troubleshooting

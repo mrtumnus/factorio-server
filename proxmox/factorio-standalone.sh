@@ -316,6 +316,27 @@ configure_container() {
     msg_warn "No game password - anyone can join!"
   fi
 
+  # Backup Mount (optional)
+  echo ""
+  echo -e "${BOLD}${BL}Backup Configuration${CL}"
+  echo -e "${DIM}Mount a host path for automatic savegame backups (hourly)${CL}"
+  echo -e "${DIM}The path must exist on the Proxmox host${CL}"
+  read -rp "Backup mount path on host (Enter to skip) [/mnt/pve/factorio]: " BACKUP_MOUNT_PATH
+  if [[ -z "$BACKUP_MOUNT_PATH" ]]; then
+    read -rp "Enable backups with default path /mnt/pve/factorio? [y/N]: " USE_DEFAULT_BACKUP
+    if [[ ${USE_DEFAULT_BACKUP,,} == "y" ]]; then
+      BACKUP_MOUNT_PATH="/mnt/pve/factorio"
+    fi
+  fi
+  if [[ -n "$BACKUP_MOUNT_PATH" ]]; then
+    if [[ -d "$BACKUP_MOUNT_PATH" ]]; then
+      msg_ok "Backup path exists: $BACKUP_MOUNT_PATH"
+    else
+      msg_warn "Path does not exist yet: $BACKUP_MOUNT_PATH - will be created"
+      mkdir -p "$BACKUP_MOUNT_PATH" 2>/dev/null || msg_warn "Could not create path - please create manually"
+    fi
+  fi
+
   # Summary
   echo ""
   echo -e "${BOLD}${GN}Configuration Summary:${CL}"
@@ -346,6 +367,11 @@ configure_container() {
     echo -e "    Game Password: ****"
   else
     echo -e "    Game Password: ${RD}None${CL}"
+  fi
+  if [[ -n "$BACKUP_MOUNT_PATH" ]]; then
+    echo -e "    Backup Path:   ${GN}${BACKUP_MOUNT_PATH}${CL} (hourly)"
+  else
+    echo -e "    Backup Path:   ${YW}None${CL}"
   fi
   echo ""
 
@@ -408,6 +434,13 @@ create_container() {
     &>/dev/null
 
   msg_ok "Created LXC Container $CT_ID"
+
+  # Add backup bind mount if configured
+  if [[ -n "$BACKUP_MOUNT_PATH" ]]; then
+    msg_info "Configuring backup mount"
+    pct set "$CT_ID" -mp0 "${BACKUP_MOUNT_PATH},mp=/backup"
+    msg_ok "Backup mount configured: ${BACKUP_MOUNT_PATH} -> /backup"
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -634,6 +667,61 @@ SYSTEMD
   fi
   
   msg_ok "Server configuration applied"
+
+  # Create backup script and cronjob if backup mount is configured
+  if [[ -n "$BACKUP_MOUNT_PATH" ]]; then
+    msg_info "Creating backup script"
+    cat <<'BACKUPSCRIPT' | pct exec "$CT_ID" -- tee /opt/factorio/backup.sh >/dev/null
+#!/bin/bash
+# Factorio Savegame Backup Script
+# Runs hourly via cron, keeps last 24 hourly + 7 daily backups
+
+SAVE_FILE="/opt/factorio/saves/world.zip"
+BACKUP_DIR="/backup"
+HOSTNAME=$(hostname)
+DATE=$(date +%Y%m%d-%H%M%S)
+
+# Check if save file exists
+if [[ ! -f "$SAVE_FILE" ]]; then
+    echo "No save file found: $SAVE_FILE"
+    exit 0
+fi
+
+# Check if backup dir is mounted
+if [[ ! -d "$BACKUP_DIR" ]] || ! mountpoint -q "$BACKUP_DIR" 2>/dev/null; then
+    # Try anyway if directory exists
+    if [[ ! -d "$BACKUP_DIR" ]]; then
+        echo "Backup directory not available: $BACKUP_DIR"
+        exit 1
+    fi
+fi
+
+# Create backup
+BACKUP_FILE="${BACKUP_DIR}/${HOSTNAME}-${DATE}.zip"
+cp "$SAVE_FILE" "$BACKUP_FILE"
+echo "Backup created: $BACKUP_FILE"
+
+# Cleanup old hourly backups (keep last 24)
+ls -t ${BACKUP_DIR}/${HOSTNAME}-*.zip 2>/dev/null | tail -n +25 | xargs -r rm -f
+
+# Keep one backup per day for last 7 days (at midnight)
+HOUR=$(date +%H)
+if [[ "$HOUR" == "00" ]]; then
+    DAILY_BACKUP="${BACKUP_DIR}/${HOSTNAME}-daily-$(date +%Y%m%d).zip"
+    cp "$SAVE_FILE" "$DAILY_BACKUP"
+    echo "Daily backup created: $DAILY_BACKUP"
+    # Cleanup old daily backups (keep last 7)
+    ls -t ${BACKUP_DIR}/${HOSTNAME}-daily-*.zip 2>/dev/null | tail -n +8 | xargs -r rm -f
+fi
+BACKUPSCRIPT
+    pct exec "$CT_ID" -- chmod +x /opt/factorio/backup.sh
+    pct exec "$CT_ID" -- chown factorio:factorio /opt/factorio/backup.sh
+    
+    # Add hourly cronjob
+    echo "0 * * * * factorio /opt/factorio/backup.sh >> /var/log/factorio-backup.log 2>&1" | pct exec "$CT_ID" -- tee /etc/cron.d/factorio-backup >/dev/null
+    pct exec "$CT_ID" -- chmod 644 /etc/cron.d/factorio-backup
+    msg_ok "Backup script and hourly cronjob created"
+  fi
 
   msg_info "Creating dynamic MOTD"
   cat <<'MOTDEOF' | pct exec "$CT_ID" -- tee /etc/update-motd.d/10-factorio >/dev/null
