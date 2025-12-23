@@ -91,7 +91,7 @@ msg_warn() { echo -e "${YW}${WARN}${CL} ${1}"; }
 
 header_info() {
   clear
-  cat <<"EOF"
+  cat <<EOF
 
     ███████╗ █████╗  ██████╗████████╗ ██████╗ ██████╗ ██╗ ██████╗ 
     ██╔════╝██╔══██╗██╔════╝╚══██╔══╝██╔═══██╗██╔══██╗██║██╔═══██╗
@@ -221,104 +221,93 @@ configure_container() {
     NET_CONFIG="ip=${STATIC_IP},gw=${GATEWAY_IP}"
   else
     NET_CONFIG="ip=dhcp"
-  # ═══════════════════════════════════════════════════════════════════════════
-  # FACTORIO SERVER CONFIGURATION
-  # ═══════════════════════════════════════════════════════════════════════════
-  echo ""
-  echo -e "${BOLD}${BL}Factorio Server Configuration${CL}"
-  echo -e "${DIM}Press Enter to accept defaults [shown in brackets]${CL}"
-  echo ""
-
-  # Server Name
-  read -rp "Server Name [Factorio Server]: " SERVER_NAME
-  SERVER_NAME=${SERVER_NAME:-Factorio Server}
-
-  # Server Description
-  read -rp "Server Description [A Factorio server running on Proxmox LXC]: " SERVER_DESCRIPTION
-  SERVER_DESCRIPTION=${SERVER_DESCRIPTION:-A Factorio server running on Proxmox LXC}
-
-  # Max Players (0 = unlimited)
-  read -rp "Max Players (0 = unlimited) [0]: " MAX_PLAYERS
-  MAX_PLAYERS=${MAX_PLAYERS:-0}
-
-  # Public Visibility
-  echo ""
-  read -rp "List server publicly on factorio.com? [y/N]: " PUBLIC_VISIBLE
-  PUBLIC_VISIBLE=${PUBLIC_VISIBLE:-n}
-  if [[ ${PUBLIC_VISIBLE,,} == "y" ]]; then
-    VISIBILITY_PUBLIC="true"
-    REQUIRE_USER_VERIFICATION="true"
-    msg_info "User verification enabled (required for public servers)"
-  else
-    VISIBILITY_PUBLIC="false"
-    REQUIRE_USER_VERIFICATION="false"
   fi
 
-  # Factorio Account (required for public servers)
+  # Storage
   echo ""
-  echo -e "${DIM}Factorio account credentials (required for public servers)${CL}"
-  echo -e "${DIM}Find these at https://factorio.com/profile or in %APPDATA%\\Factorio\\player-data.json${CL}"
-  read -rp "Factorio Username (leave empty if private): " FACTORIO_USERNAME
-  
-  if [[ -n "$FACTORIO_USERNAME" ]]; then
-    echo -e "${YW}Token is more secure than password. Find it at https://factorio.com/profile${CL}"
-    read -rsp "Factorio Token (recommended): " FACTORIO_TOKEN
+  TEMPLATE_STORAGE=$(select_storage "vztmpl")
+  CONTAINER_STORAGE=$(select_storage "rootdir")
+
+  # SSH Public Key (optional - but allows skipping password)
+  echo ""
+  echo -e "${BOLD}${BL}SSH Zugriff konfigurieren${CL}"
+  echo -e "${DIM}SSH Public Key ermöglicht passwortlosen Zugriff${CL}"
+  echo -e "${DIM}(Windows: Get-Content ~/.ssh/id_ed25519.pub | Set-Clipboard)${CL}"
+  read -rp "SSH Public Key (Enter to skip): " SSH_PUBLIC_KEY
+
+  # SSH Root Password
+  if [[ -n "$SSH_PUBLIC_KEY" ]]; then
+    msg_ok "SSH Public Key wird eingerichtet"
     echo ""
-    if [[ -z "$FACTORIO_TOKEN" ]]; then
-      echo -e "${RD}Password authentication is not recommended!${CL}"
-      read -rsp "Factorio Password (not recommended): " FACTORIO_PASSWORD
+    echo -e "${DIM}Passwort ist optional wenn SSH-Key gesetzt (für Proxmox Console nützlich)${CL}"
+    read -rsp "Root Password (Enter to skip): " ROOT_PASSWORD
+    echo ""
+    if [[ -n "$ROOT_PASSWORD" ]]; then
+      read -rsp "Root Password (bestätigen): " ROOT_PASSWORD_CONFIRM
       echo ""
+      if [[ "$ROOT_PASSWORD" != "$ROOT_PASSWORD_CONFIRM" ]]; then
+        msg_warn "Passwörter stimmen nicht überein - kein Passwort gesetzt"
+        ROOT_PASSWORD=""
+      elif [[ ${#ROOT_PASSWORD} -lt 4 ]]; then
+        msg_warn "Passwort zu kurz - kein Passwort gesetzt"
+        ROOT_PASSWORD=""
+      else
+        msg_ok "SSH Passwort gesetzt"
+      fi
+    else
+      msg_info "Kein Passwort - nur SSH-Key Zugriff möglich"
     fi
-  fi
-
-  # Game Password
-  echo ""
-  echo -e "${YW}Game Password (players need this to join):${CL}"
-  read -rsp "Game Password (leave empty for no password): " GAME_PASSWORD
-  echo ""
-  if [[ -n "$GAME_PASSWORD" ]]; then
-    msg_ok "Game password set"
   else
-    msg_warn "No game password - anyone can join!"
+    # No SSH key - password is required
+    echo ""
+    echo -e "${YW}SSH Root Password (erforderlich ohne SSH-Key):${CL}"
+    while true; do
+      read -rsp "Root Password: " ROOT_PASSWORD
+      echo ""
+      read -rsp "Root Password (bestätigen): " ROOT_PASSWORD_CONFIRM
+      echo ""
+      if [[ "$ROOT_PASSWORD" == "$ROOT_PASSWORD_CONFIRM" ]]; then
+        if [[ ${#ROOT_PASSWORD} -lt 4 ]]; then
+          msg_warn "Passwort muss mindestens 4 Zeichen haben"
+        else
+          break
+        fi
+      else
+        msg_warn "Passwörter stimmen nicht überein"
+      fi
+    done
+    msg_ok "SSH Passwort gesetzt"
   fi
 
   # Summary
   echo ""
-  echo -e "${BOLD}${GN}Factorio Configuration Summary:${CL}"
+  echo -e "${BOLD}${GN}Configuration Summary:${CL}"
   echo ""
-  echo -e "  ${BOLD}Factorio Server:${CL}"
-  echo -e "    Name:          ${SERVER_NAME}"
-  echo -e "    Description:   ${SERVER_DESCRIPTION}"
-  echo -e "    Max Players:   ${MAX_PLAYERS}"
-  if [[ "$VISIBILITY_PUBLIC" == "true" ]]; then
-    echo -e "    Public:        ${GN}Yes (listed on factorio.com)${CL}"
-  else
-    echo -e "    Public:        ${YW}No (LAN only)${CL}"
-  fi
-  if [[ -n "$FACTORIO_USERNAME" ]]; then
-    echo -e "    Account:       ${FACTORIO_USERNAME}"
-  fi
-  if [[ -n "$GAME_PASSWORD" ]]; then
-    echo -e "    Game Password: ****"
-  else
-    echo -e "    Game Password: ${RD}None${CL}"
-  fi
+  echo -e "  ${BOLD}Container:${CL}"
+  echo -e "    ID:            ${CT_ID}"
+  echo -e "    Hostname:      ${CT_HOSTNAME}"
+  echo -e "    Disk Size:     ${DISK_SIZE} GB"
+  echo -e "    CPU Cores:     ${CORE_COUNT}"
+  echo -e "    RAM:           ${RAM_SIZE} MB"
+  echo -e "    Network:       ${BRIDGE} (${NET_CONFIG})"
+  echo -e "    Template:      ${TEMPLATE_STORAGE}"
+  echo -e "    Storage:       ${CONTAINER_STORAGE}"
   echo ""
 
-  read -rp "Proceed with installation? [Y/n]: " PROCEED
+  read -rp "Proceed with container creation? [Y/n]: " PROCEED
   PROCEED=${PROCEED:-y}
   
   if [[ ${PROCEED,,} != "y" ]]; then
-    msg_warn "Installation cancelled"
+    msg_warn "Container creation cancelled"
     exit 0
   fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
-# FACTORIO CONFIGURATION (FOR SETUP AND FULL MODES)
+# FACTORIO SERVER CONFIGURATION
 # ═══════════════════════════════════════════════════════════════════════════
 
-configure_factorio_app() {
+configure_factorio() {
   echo ""
   echo -e "${BOLD}${BL}Factorio Server Configuration${CL}"
   echo -e "${DIM}Press Enter to accept defaults [shown in brackets]${CL}"
@@ -352,7 +341,7 @@ configure_factorio_app() {
   # Factorio Account (required for public servers)
   echo ""
   echo -e "${DIM}Factorio account credentials (required for public servers)${CL}"
-  echo -e "${DIM}Find these at https://factorio.com/profile${CL}"
+  echo -e "${DIM}Find these at https://factorio.com/profile or in player-data.json${CL}"
   read -rp "Factorio Username (leave empty if private): " FACTORIO_USERNAME
   
   if [[ -n "$FACTORIO_USERNAME" ]]; then
@@ -412,6 +401,8 @@ configure_factorio_app() {
 # ═══════════════════════════════════════════════════════════════════════════
 # TEMPLATE MANAGEMENT
 # ═══════════════════════════════════════════════════════════════════════════
+
+download_template() {
   msg_info "Checking for OS template"
 
   # Update template list
@@ -810,61 +801,84 @@ MOTDEOF
 # ═══════════════════════════════════════════════════════════════════════════
 
 setup_system() {
-  msg_info "Starting Container"
-  pct start "$CT_ID"
-  sleep 5
-  msg_ok "Container started"
+  if [[ "$MODE" != "setup" ]]; then
+    msg_info "Starting Container"
+    pct start "$CT_ID"
+    sleep 5
+    msg_ok "Container started"
 
-  msg_info "Waiting for network"
-  for i in {1..30}; do
-    if pct exec "$CT_ID" -- ping -c1 -W1 1.1.1.1 &>/dev/null; then
-      break
-    fi
-    sleep 1
-  done
-  msg_ok "Network ready"
+    msg_info "Waiting for network"
+    for i in {1..30}; do
+      if pct exec "$CT_ID" -- ping -c1 -W1 1.1.1.1 &>/dev/null; then
+        break
+      fi
+      sleep 1
+    done
+    msg_ok "Network ready"
+  fi
 
   msg_info "Configuring locale"
-  pct exec "$CT_ID" -- apt-get update -qq || msg_warn "apt-get update had warnings"
-  pct exec "$CT_ID" -- apt-get install -y -qq locales || msg_warn "locales install had warnings"
-  echo "en_US.UTF-8 UTF-8" | pct exec "$CT_ID" -- tee /etc/locale.gen >/dev/null
-  pct exec "$CT_ID" -- locale-gen >/dev/null 2>&1 || true
-  pct exec "$CT_ID" -- update-locale LANG=en_US.UTF-8 >/dev/null 2>&1 || true
+  if [[ "$MODE" == "setup" ]]; then
+    apt-get update -qq || msg_warn "apt-get update had warnings"
+    apt-get install -y -qq locales || msg_warn "locales install had warnings"
+    echo "en_US.UTF-8 UTF-8" | tee /etc/locale.gen >/dev/null
+    locale-gen >/dev/null 2>&1 || true
+    update-locale LANG=en_US.UTF-8 >/dev/null 2>&1 || true
+  else
+    pct exec "$CT_ID" -- apt-get update -qq || msg_warn "apt-get update had warnings"
+    pct exec "$CT_ID" -- apt-get install -y -qq locales || msg_warn "locales install had warnings"
+    echo "en_US.UTF-8 UTF-8" | pct exec "$CT_ID" -- tee /etc/locale.gen >/dev/null
+    pct exec "$CT_ID" -- locale-gen >/dev/null 2>&1 || true
+    pct exec "$CT_ID" -- update-locale LANG=en_US.UTF-8 >/dev/null 2>&1 || true
+  fi
   msg_ok "Locale configured"
 
   msg_info "Updating system packages"
-  pct exec "$CT_ID" -- apt-get upgrade -y -qq || msg_warn "apt-get upgrade had warnings"
+  if [[ "$MODE" == "setup" ]]; then
+    apt-get upgrade -y -qq || msg_warn "apt-get upgrade had warnings"
+  else
+    pct exec "$CT_ID" -- apt-get upgrade -y -qq || msg_warn "apt-get upgrade had warnings"
+  fi
   msg_ok "System updated"
 
   msg_info "Installing dependencies"
-  if ! pct exec "$CT_ID" -- apt-get install -y -qq curl sudo mc xz-utils jq cifs-utils openssh-server; then
-    msg_error "Failed to install dependencies"
-    exit 1
+  if [[ "$MODE" == "setup" ]]; then
+    if ! apt-get install -y -qq curl sudo mc xz-utils jq cifs-utils; then
+      msg_error "Failed to install dependencies"
+      exit 1
+    fi
+  else
+    if ! pct exec "$CT_ID" -- apt-get install -y -qq curl sudo mc xz-utils jq cifs-utils openssh-server; then
+      msg_error "Failed to install dependencies"
+      exit 1
+    fi
   fi
   msg_ok "Dependencies installed"
 
-  msg_info "Configuring SSH"
-  # Set password only if provided
-  if [[ -n "$ROOT_PASSWORD" ]]; then
-    echo "root:${ROOT_PASSWORD}" | pct exec "$CT_ID" -- chpasswd
-  fi
-  pct exec "$CT_ID" -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || true
-  pct exec "$CT_ID" -- sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config || true
-  pct exec "$CT_ID" -- systemctl enable ssh || true
-  # Setup SSH public key if provided
-  if [[ -n "$SSH_PUBLIC_KEY" ]]; then
-    pct exec "$CT_ID" -- mkdir -p /root/.ssh
-    pct exec "$CT_ID" -- chmod 700 /root/.ssh
-    echo "$SSH_PUBLIC_KEY" | pct exec "$CT_ID" -- tee /root/.ssh/authorized_keys >/dev/null
-    pct exec "$CT_ID" -- chmod 600 /root/.ssh/authorized_keys
-    msg_ok "SSH Public Key configured"
-  fi
-  pct exec "$CT_ID" -- systemctl restart ssh
-  msg_ok "SSH configured (root login enabled)"
+  if [[ "$MODE" != "setup" ]]; then
+    msg_info "Configuring SSH"
+    # Set password only if provided
+    if [[ -n "$ROOT_PASSWORD" ]]; then
+      echo "root:${ROOT_PASSWORD}" | pct exec "$CT_ID" -- chpasswd
+    fi
+    pct exec "$CT_ID" -- sed -i 's/#PermitRootLogin.*/PermitRootLogin yes/' /etc/ssh/sshd_config || true
+    pct exec "$CT_ID" -- sed -i 's/PermitRootLogin prohibit-password/PermitRootLogin yes/' /etc/ssh/sshd_config || true
+    pct exec "$CT_ID" -- systemctl enable ssh || true
+    # Setup SSH public key if provided
+    if [[ -n "$SSH_PUBLIC_KEY" ]]; then
+      pct exec "$CT_ID" -- mkdir -p /root/.ssh
+      pct exec "$CT_ID" -- chmod 700 /root/.ssh
+      echo "$SSH_PUBLIC_KEY" | pct exec "$CT_ID" -- tee /root/.ssh/authorized_keys >/dev/null
+      pct exec "$CT_ID" -- chmod 600 /root/.ssh/authorized_keys
+      msg_ok "SSH Public Key configured"
+    fi
+    pct exec "$CT_ID" -- systemctl restart ssh
+    msg_ok "SSH configured (root login enabled)"
 
-  # Get container IP
-  sleep 3
-  CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
+    # Get container IP
+    sleep 3
+    CT_IP=$(pct exec "$CT_ID" -- hostname -I | awk '{print $1}')
+  fi
 }
 
 # ═══════════════════════════════════════════════════════════════════════════
@@ -906,7 +920,8 @@ main() {
     
     setup)
       # Application setup only (run inside container)
-      configure_factorio_app
+      configure_factorio
+      setup_system
       install_factorio
       
       echo ""
@@ -934,7 +949,7 @@ main() {
     full)
       # Full installation (container + application)
       configure_container
-      configure_factorio_app
+      configure_factorio
       download_template
       create_container
       setup_system
